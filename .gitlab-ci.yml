@@ -1,0 +1,51 @@
+default:
+  tags: 
+    - k8s-ci-platform
+  image: 
+    name: docker:20.10.16
+
+variables:
+  IMAGE_NAME: "cellwizeplatform/${CI_PROJECT_NAME}:${CI_COMMIT_TAG}"
+  REGISTER_ENDPOINT:
+    value: "https://automationapi.SPACENAME.dev.spaces.cellwize.local/automation"
+    description: "automation api endpoint."
+
+services:
+  - docker:20.10.16-dind
+
+before_script:
+  # - docker info
+  - env
+
+stages:          # List of stages for jobs, and their order of execution
+  - build & push docker image
+  - register app in app-registrar 
+
+build:
+  stage: build & push docker image
+  only:
+    - tags
+  except:
+    - branches
+  before_script:
+    - docker login -u ${DOCKER_HUB_USER} -p ${DOCKER_HUB_CRED}
+  script:
+    - docker build . -t ${IMAGE_NAME}
+    - echo "Pushing the docker image"
+    - docker push ${IMAGE_NAME}
+    - echo "Removing created images."
+    - docker rmi ${IMAGE_NAME}
+
+register:
+  stage: register app in app-registrar 
+  only:
+    - tags
+  except:
+    - branches
+  script:
+    - apk update && apk add yq && apk add jq && apk add curl
+    - yq -o=json ./config/config.yaml | tee config.json
+    - echo $(jq -r '.application.meta' config.json) | jq ".name as \$displayname | . |= . + {\"author\":\"${CI_COMMIT_AUTHOR}\", \"name\":\"${CI_PROJECT_NAME}\", \"displayName\":\$displayname, \"image\":\"${IMAGE_NAME}\", \"version\":\"${CI_COMMIT_TAG}\"} | . |= . + {schema:{parameters:[]}}" | tee noParams.json
+    - jq -r '.application.schema' config.json | jq -r '. as $schema | {"schema":{"parameters":$schema}}'| tee params.json
+    - jq -r '.schema.parameters |= . + inputs.schema.parameters' noParams.json params.json | tee ./config/combined.json
+    - curl -k -X POST ${REGISTER_ENDPOINT}/v1/applications -H 'Content-Type:application/json' -H 'Accept:application/json' -d "$(cat ./config/combined.json)"

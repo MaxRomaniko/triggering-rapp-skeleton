@@ -1,0 +1,18 @@
+application:
+  meta:
+    name: triggering-rapp-skeleton
+    description: Python triggering-rapp-skeleton
+    author:
+  schema:
+    - name: TASK_ID
+      displayName: Task Id
+      description: Task id
+      defaultValue: 0
+      type: integer
+      group: General Settings
+    - name: EVENT
+      displayName: EVENT
+      description: Event received by pca service
+      defaultValue: {'configurationItem':'NBEPE2553508-00'}
+      type: string
+      group: General Settings
